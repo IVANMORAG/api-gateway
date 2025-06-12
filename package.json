@@ -6,7 +6,6 @@
   "scripts": {
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
-    "test": "echo \"Starting server...\" && node src/index.js",
     "docker:build": "docker build -t api-gateway .",
     "docker:run": "docker run -p 3000:3000 api-gateway",
     "docker:compose": "docker-compose up --build"
