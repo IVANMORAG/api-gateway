@@ -1,135 +1,122 @@
-// ✅ CORS SIMPLIFICADO Y MÁS AGRESIVO PARA RENDER
 const cors = require('cors');
 
-// ✅ Configuración más permisiva para Render
 const corsOptions = {
   origin: function (origin, callback) {
-    console.log(`🌐 CORS CHECK: Origin = ${origin || 'NO-ORIGIN'}`);
-    
-    // ✅ LISTA ACTUALIZADA con tu URL de Render
     const allowedOrigins = [
-      'https://subastas-mora.netlify.app',
-      'https://api-gateway-g9gb.onrender.com', // TU URL
       'http://localhost:3000',
       'http://localhost:3001',
-      'http://localhost:5173'
+      'http://localhost:5173', // Vite dev server
+      'https://subastas-mora.netlify.app'
     ];
     
-    // ✅ MÁS PERMISIVO: Permitir cualquier origin en desarrollo
-    if (process.env.NODE_ENV === 'development') {
-      console.log('🔧 DEV MODE: Allowing all origins');
-      return callback(null, true);
-    }
-    
-    // ✅ Permitir requests sin origin (mobile apps, Postman, etc.)
-    if (!origin) {
-      console.log('✅ CORS: No origin - ALLOWED');
-      return callback(null, true);
-    }
-    
-    // ✅ Permitir orígenes específicos + patrones
-    const isAllowed = allowedOrigins.includes(origin) ||
-                     origin.includes('netlify.app') ||
-                     origin.includes('localhost') ||
-                     origin.includes('onrender.com') ||
-                     origin.includes('127.0.0.1');
-    
-    if (isAllowed) {
-      console.log(`✅ CORS: Origin ALLOWED - ${origin}`);
+    // Permitir subdominios de Netlify y solicitudes sin origen (ej: Postman, mobile apps)
+    if (!origin || allowedOrigins.includes(origin) || /.*\.netlify\.app$/.test(origin)) {
+      console.log(`✅ CORS: Origin allowed: ${origin || 'no-origin'}`);
       callback(null, true);
     } else {
-      console.log(`❌ CORS: Origin BLOCKED - ${origin}`);
-      // ✅ En producción, ser menos estricto por problemas de Render
-      console.log('🔧 RENDER FIX: Allowing anyway due to Render proxy issues');
-      callback(null, true);
+      console.log(`❌ CORS: Origin NOT allowed: ${origin}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔧 DEV MODE: Allowing origin anyway');
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS: Origin ${origin} not allowed by CORS policy`), false);
+      }
     }
   },
   
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS', 'HEAD'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   
   allowedHeaders: [
-    'Content-Type',
+    'Content-Type', 
     'Authorization', 
     'X-Requested-With',
     'Accept',
     'Origin',
     'Access-Control-Request-Method',
-    'Access-Control-Request-Headers',
-    'Cache-Control',
-    'Pragma',
-    'X-Forwarded-For',
-    'X-Forwarded-Proto',
-    'X-Forwarded-Host'
+    'Access-Control-Request-Headers'
   ],
   
   exposedHeaders: [
-    'Content-Length',
+    'Content-Length', 
     'X-Request-Id',
     'Access-Control-Allow-Origin'
   ],
   
   credentials: true,
-  optionsSuccessStatus: 200,
+  
+  optionsSuccessStatus: 200, // Para navegadores legacy
   preflightContinue: false,
-  maxAge: 86400
+  
+  maxAge: 86400 // 24 horas de cache para preflight requests
 };
 
-// ✅ Middleware principal de CORS
+// Crear el middleware CORS principal
 const corsMiddleware = cors(corsOptions);
 
-// ✅ Middleware para FORZAR headers CORS (backup)
+// Middleware de debugging mejorado
+const debugCors = (req, res, next) => {
+  const origin = req.get('origin');
+  const method = req.method;
+  const path = req.path;
+  
+  console.log(`🌐 CORS Debug: ${method} ${path}`, {
+    origin,
+    headers: req.headers,
+    ip: req.ip,
+    protocol: req.protocol,
+    host: req.get('host')
+  });
+  
+  if (method === 'OPTIONS') {
+    console.log('🔍 OPTIONS request details:', {
+      origin,
+      'access-control-request-method': req.get('access-control-request-method'),
+      'access-control-request-headers': req.get('access-control-request-headers'),
+      'user-agent': req.get('user-agent')?.substring(0, 50)
+    });
+  }
+  
+  next();
+};
+
+// Middleware para forzar headers CORS
 const forceCorsHeaders = (req, res, next) => {
   const origin = req.get('origin');
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:5173',
+    'https://subastas-mora.netlify.app'
+  ];
   
-  console.log(`🔧 FORCE CORS: ${req.method} ${req.path} from ${origin || 'no-origin'}`);
+  if (!origin || allowedOrigins.includes(origin) || /.*\.netlify\.app$/.test(origin)) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin,Access-Control-Request-Method,Access-Control-Request-Headers');
+    res.header('Vary', 'Origin');
+  }
   
-  // ✅ FORZAR headers CORS SIEMPRE para Render
-  res.header('Access-Control-Allow-Origin', origin || '*');
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS,HEAD');
-  res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin,Access-Control-Request-Method,Access-Control-Request-Headers');
-  res.header('Vary', 'Origin');
-  
-  // ✅ Responder OPTIONS inmediatamente
   if (req.method === 'OPTIONS') {
-    console.log(`✅ OPTIONS: Handled for ${req.path} from ${origin || 'no-origin'}`);
+    console.log(`🔍 OPTIONS request handled: ${req.path} from ${origin || 'no-origin'}`);
     return res.status(200).end();
   }
   
   next();
 };
 
-// ✅ Debugging mejorado
-const debugCors = (req, res, next) => {
-  const origin = req.get('origin');
-  const method = req.method;
-  const path = req.path;
-  
-  console.log(`🌐 CORS DEBUG: ${method} ${path} | Origin: ${origin || 'none'} | IP: ${req.ip}`);
-  
-  // Log headers importantes para debugging
-  if (method === 'OPTIONS') {
-    console.log('🔍 OPTIONS Details:', {
-      origin,
-      requestMethod: req.get('access-control-request-method'),
-      requestHeaders: req.get('access-control-request-headers'),
-      userAgent: req.get('user-agent')?.substring(0, 50)
-    });
+// Middleware para proxies
+const proxyCorsFix = (req, res, next) => {
+  if (req.get('origin')) {
+    req.corsOrigin = req.get('origin');
   }
-  
   next();
 };
 
-// ✅ EXPORTAR middleware compuesto
-module.exports = (req, res, next) => {
-  // Secuencia: Debug -> Force CORS -> Official CORS
-  debugCors(req, res, () => {
-    forceCorsHeaders(req, res, () => {
-      // Solo aplicar el middleware oficial si no es OPTIONS
-      if (req.method === 'OPTIONS') {
-        return; // Ya se manejó en forceCorsHeaders
-      }
-      corsMiddleware(req, res, next);
-    });
-  });
-};
+// Exportar middlewares en el orden correcto
+module.exports = [
+  debugCors,
+  proxyCorsFix,
+  forceCorsHeaders,
+  corsMiddleware
+];
