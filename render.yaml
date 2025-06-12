@@ -1,0 +1,49 @@
+# render.yaml - Configuración para despliegue en Render
+services:
+  - type: web
+    name: api-gateway
+    runtime: docker
+    dockerfile: Dockerfile
+    env: node
+    plan: free  # Puedes cambiar a starter o professional si necesitas más recursos
+    
+    # Configuración de red
+    port: 3000
+    healthCheckPath: /health
+    
+    # Variables de entorno (todas las que necesitas)
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
+      - key: AUTH_SERVICE_URL
+        value: https://auth-service-production-efff.up.railway.app
+      - key: AUCTION_SERVICE_URL
+        value: https://auction-service-production-0633.up.railway.app
+      - key: BID_SERVICE_URL
+        value: https://bid-service-production.up.railway.app
+      - key: CORS_DEBUG
+        value: "true"
+      - key: ALLOWED_ORIGINS
+        value: "https://subastas-mora.netlify.app,http://localhost:3000,https://api-gateway.onrender.com"
+    
+    # Configuración avanzada
+    autoDeploy: true  # Se despliega automáticamente con cada push
+    region: ohio  # o la región más cercana a tus usuarios (us-central1, etc.)
+    
+    # Escalado (opcional para producción)
+    scaling:
+      minInstances: 1
+      maxInstances: 1
+      cpu: 0.25  # Para plan free
+      memory: 512MB  # Para plan free
+
+    # Health check avanzado
+    healthChecks:
+      - name: app-health
+        path: /health
+        initialDelay: 30s
+        interval: 60s
+        timeout: 10s
+        threshold: 3
