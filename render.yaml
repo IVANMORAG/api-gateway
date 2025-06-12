@@ -1,21 +1,14 @@
-# render.yaml - Configuración corregida para Render
 services:
   - type: web
     name: api-gateway
-    runtime: node
-    env: node
+    runtime: docker
     plan: free
-    
-    # Configuración de red
-    buildCommand: npm ci
-    startCommand: npm start
-    
-    # Variables de entorno
+    dockerfilePath: ./Dockerfile
+    buildCommand: docker build -t api-gateway .
+    startCommand: docker run -p $PORT:$PORT api-gateway
     envVars:
       - key: NODE_ENV
         value: production
-      - key: PORT
-        value: 10000
       - key: AUTH_SERVICE_URL
         value: https://auth-service-production-efff.up.railway.app
       - key: AUCTION_SERVICE_URL
@@ -25,12 +18,8 @@ services:
       - key: CORS_DEBUG
         value: "true"
       - key: ALLOWED_ORIGINS
-        value: "https://subastas-mora.netlify.app,http://localhost:3000,http://localhost:5173,https://api-gateway-g9gb.onrender.com"
+        value: "https://subastas-mora.netlify.app,https://api-gateway-g9gb.onrender.com"
       - key: RENDER_EXTERNAL_URL
         value: "https://api-gateway-g9gb.onrender.com"
-    
-    # Health check
     healthCheckPath: /health
-    
-    # Auto deploy
     autoDeploy: true
