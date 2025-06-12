@@ -2,32 +2,27 @@ const express = require('express');
 const http = require('http');
 const { createProxyMiddleware } = require('http-proxy-middleware');
 
-// Cargar variables de entorno PRIMERO
 require('dotenv').config();
-
-console.log('🔧 Iniciando API Gateway...');
-console.log('🔧 NODE_ENV:', process.env.NODE_ENV);
-console.log('🔧 PORT:', process.env.PORT);
 
 const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
-// Configurar trust proxy para Render
 app.set('trust proxy', 1);
 
-// Middleware básico
+// Middleware para parsear JSON (PRIMERO)
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// CORS middleware simple
+// Middleware CORS
 app.use((req, res, next) => {
   const origin = req.get('origin');
   const allowedOrigins = [
     'https://subastas-mora.netlify.app',
+    'https://api-gateway-subastas.onrender.com',
     'http://localhost:3000',
     'http://localhost:3001',
-    'http://localhost:5173'
+    'http://localhost:5173',
   ];
 
   if (!origin || allowedOrigins.includes(origin) || /.*\.netlify\.app$/.test(origin)) {
@@ -39,20 +34,21 @@ app.use((req, res, next) => {
   next();
 });
 
-// Logger middleware simple
+// Logger middleware
 app.use((req, res, next) => {
   console.log(`📍 ${req.method} ${req.path} from ${req.ip}`);
   next();
 });
 
-// Manejo explícito de OPTIONS
+// Manejo de OPTIONS
 app.options('*', (req, res) => {
   const origin = req.get('origin');
   const allowedOrigins = [
     'https://subastas-mora.netlify.app',
+    'https://api-gateway-subastas.onrender.com',
     'http://localhost:3000',
     'http://localhost:3001',
-    'http://localhost:5173'
+    'http://localhost:5173',
   ];
 
   if (!origin || allowedOrigins.includes(origin) || /.*\.netlify\.app$/.test(origin)) {
@@ -68,14 +64,13 @@ app.options('*', (req, res) => {
 
 // Configuración WebSocket
 const BID_SERVICE_URL = process.env.BID_SERVICE_URL || 'http://localhost:3003';
-const WS_TARGET = process.env.NODE_ENV === 'production' 
-  ? 'wss://bid-service-production.up.railway.app' 
+const WS_TARGET = process.env.NODE_ENV === 'production'
+  ? 'wss://bid-service-production.up.railway.app'
   : 'ws://localhost:3003';
 
 console.log('📡 BID_SERVICE_URL:', BID_SERVICE_URL);
 console.log('📡 WebSocket target:', WS_TARGET);
 
-// Crear proxy WebSocket
 const wsProxy = createProxyMiddleware({
   target: WS_TARGET,
   ws: true,
@@ -90,83 +85,45 @@ const wsProxy = createProxyMiddleware({
   },
   onProxyReqWs: (proxyReq, req, socket, options, head) => {
     console.log('🔄 WebSocket proxy request:', req.url);
-  }
+  },
 });
 
 // Rutas de salud
 app.get('/health', (req, res) => {
   console.log('💚 Health check requested');
-  res.status(200).json({ 
+  res.status(200).json({
     status: 'API Gateway is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
     cors: 'enabled',
-    port: PORT
+    port: PORT,
   });
 });
 
 // Ruta para probar CORS
 app.get('/test-cors', (req, res) => {
   console.log('🧪 CORS test requested');
-  res.status(200).json({ 
+  res.status(200).json({
     status: 'CORS OK',
     origin: req.get('origin'),
     method: req.method,
     headers: {
       'access-control-allow-origin': res.get('access-control-allow-origin'),
-      'access-control-allow-credentials': res.get('access-control-allow-credentials')
+      'access-control-allow-credentials': res.get('access-control-allow-credentials'),
     },
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
-// Proxy para microservicios (rutas básicas)
-const AUTH_SERVICE_URL = process.env.AUTH_SERVICE_URL || 'http://localhost:3001';
-const AUCTION_SERVICE_URL = process.env.AUCTION_SERVICE_URL || 'http://localhost:3002';
+// Importar routers
+const authRoutes = require('./routes/auth');
+const auctionRoutes = require('./routes/auctions');
+const bidRoutes = require('./routes/bids');
 
-// Proxy para auth service
-const authProxy = createProxyMiddleware({
-  target: AUTH_SERVICE_URL,
-  changeOrigin: true,
-  pathRewrite: {
-    '^/api/auth': '/api/auth'
-  },
-  onError: (err, req, res) => {
-    console.error('❌ Auth Proxy Error:', err.message);
-    res.status(500).json({ error: 'Auth service unavailable' });
-  }
-});
-
-// Proxy para auction service
-const auctionProxy = createProxyMiddleware({
-  target: AUCTION_SERVICE_URL,
-  changeOrigin: true,
-  pathRewrite: {
-    '^/api/auctions': '/api/auctions'
-  },
-  onError: (err, req, res) => {
-    console.error('❌ Auction Proxy Error:', err.message);
-    res.status(500).json({ error: 'Auction service unavailable' });
-  }
-});
-
-// Proxy para bid service
-const bidProxy = createProxyMiddleware({
-  target: BID_SERVICE_URL,
-  changeOrigin: true,
-  pathRewrite: {
-    '^/api/bids': '/api/bids'
-  },
-  onError: (err, req, res) => {
-    console.error('❌ Bid Proxy Error:', err.message);
-    res.status(500).json({ error: 'Bid service unavailable' });
-  }
-});
-
-// Aplicar proxies
-app.use('/api/auth', authProxy);
-app.use('/api/auctions', auctionProxy);
-app.use('/api/bids', bidProxy);
+// Aplicar routers
+app.use('/api/auth', authRoutes);
+app.use('/api', auctionRoutes);
+app.use('/api/bids', bidRoutes);
 
 // Aplicar WebSocket proxy
 app.use('/socket.io', wsProxy);
@@ -179,15 +136,16 @@ app.use((err, req, res, next) => {
     stack: err.stack?.split('\n')[0],
     url: req.url,
     method: req.method,
-    ip: req.ip
+    ip: req.ip,
   });
 
   const origin = req.get('origin');
   const allowedOrigins = [
     'https://subastas-mora.netlify.app',
+    'https://api-gateway-subastas.onrender.com',
     'http://localhost:3000',
     'http://localhost:3001',
-    'http://localhost:5173'
+    'http://localhost:5173',
   ];
 
   if (!origin || allowedOrigins.includes(origin) || /.*\.netlify\.app$/.test(origin)) {
@@ -196,37 +154,36 @@ app.use((err, req, res, next) => {
   }
 
   const isDev = process.env.NODE_ENV !== 'production';
-  
   res.status(err.status || 500).json({
     error: 'Internal Server Error',
     message: isDev ? err.message : 'Something went wrong!',
     timestamp: new Date().toISOString(),
-    ...(isDev && { stack: err.stack })
+    ...(isDev && { stack: err.stack }),
   });
 });
 
 // 404 Handler
 app.use('*', (req, res) => {
   console.log(`📍 404 - Ruta no encontrada: ${req.method} ${req.originalUrl} from ${req.ip}`);
-  
   const origin = req.get('origin');
   const allowedOrigins = [
     'https://subastas-mora.netlify.app',
+    'https://api-gateway-subastas.onrender.com',
     'http://localhost:3000',
     'http://localhost:3001',
-    'http://localhost:5173'
+    'http://localhost:5173',
   ];
-  
+
   if (!origin || allowedOrigins.includes(origin) || /.*\.netlify\.app$/.test(origin)) {
     res.header('Access-Control-Allow-Origin', origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
   }
-  
+
   res.status(404).json({
     error: 'Endpoint no encontrado',
     path: req.originalUrl,
     method: req.method,
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
   });
 });
 
@@ -236,18 +193,13 @@ server.listen(PORT, '0.0.0.0', (err) => {
     console.error('❌ Error al iniciar servidor:', err);
     process.exit(1);
   }
-  
   console.log(`🚀 API Gateway running on port ${PORT}`);
   console.log(`📡 WebSocket proxy configured for BID-SERVICE at ${WS_TARGET}`);
   console.log(`🌐 CORS enabled for: https://subastas-mora.netlify.app`);
   console.log(`🔧 Environment: ${process.env.NODE_ENV}`);
   console.log(`🏥 Health check available at: /health`);
-  console.log(`📍 Auth service: ${AUTH_SERVICE_URL}`);
-  console.log(`📍 Auction service: ${AUCTION_SERVICE_URL}`);
-  console.log(`📍 Bid service: ${BID_SERVICE_URL}`);
 });
 
-// Manejo de señales
 process.on('SIGTERM', () => {
   console.log('🛑 SIGTERM received, shutting down gracefully');
   server.close(() => {
@@ -264,7 +216,6 @@ process.on('SIGINT', () => {
   });
 });
 
-// Manejo de errores no capturados
 process.on('uncaughtException', (err) => {
   console.error('❌ Uncaught Exception:', err);
   process.exit(1);
