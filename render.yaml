@@ -26,7 +26,7 @@ services:
       - key: CORS_DEBUG
         value: "true"
       - key: ALLOWED_ORIGINS
-        value: "https://subastas-mora.netlify.app,http://localhost:3000,https://api-gateway.onrender.com"
+        value: "https://subastas-mora.netlify.app,http://localhost:3000,https://api-gateway-g9gb.onrender.com"
     
     # Configuración avanzada
     autoDeploy: true  # Se despliega automáticamente con cada push
