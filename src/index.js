@@ -15,22 +15,22 @@ const app = express();
 const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
 
-// ✅ CONFIGURAR TRUST PROXY PRIMERO (CRÍTICO para Railway)
-app.set('trust proxy', 1); // Cambiar a 1 en lugar de true para Railway
+// ✅ CONFIGURAR TRUST PROXY PARA RENDER
+app.set('trust proxy', true); // Para Render, usar true
 
 // ✅ ORDEN CRÍTICO DE MIDDLEWARES:
 
-// 1. CORS DEBE IR PRIMERO - ANTES DE TODO
+// 1. CORS DEBE IR PRIMERO - CORREGIDO
 app.use(corsMiddleware);
 
-// 2. Middleware para parsear JSON (DESPUÉS de CORS)
+// 2. Middleware para parsear JSON
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// 3. Rate limiter (DESPUÉS de parsing)
+// 3. Rate limiter
 app.use(rateLimiter);
 
-// 4. Logger (DESPUÉS de rate limiter)
+// 4. Logger
 app.use(logger);
 
 // ✅ CONFIGURACIÓN WEBSOCKET
@@ -50,8 +50,12 @@ const wsProxy = createProxyMiddleware({
   logLevel: 'debug',
   onError: (err, req, res) => {
     console.error('❌ WebSocket Proxy Error:', err);
-    if (res && res.writeHead) {
-      res.writeHead(500, { 'Content-Type': 'application/json' });
+    if (res && res.writeHead && !res.headersSent) {
+      res.writeHead(500, { 
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': req.get('origin') || '*',
+        'Access-Control-Allow-Credentials': 'true'
+      });
       res.end(JSON.stringify({ error: 'WebSocket proxy error' }));
     }
   },
@@ -60,59 +64,84 @@ const wsProxy = createProxyMiddleware({
   }
 });
 
-// ✅ RUTAS DE SALUD ANTES DE APLICAR PROXIES
+// ✅ RUTAS DE SALUD
 app.get('/health', (req, res) => {
+  // Agregar headers CORS manualmente por si acaso
+  const origin = req.get('origin');
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
+  
   res.status(200).json({ 
     status: 'API Gateway is running',
     timestamp: new Date().toISOString(),
     environment: process.env.NODE_ENV,
-    cors: 'enabled'
+    cors: 'enabled',
+    server: 'render'
   });
 });
 
 // ✅ Ruta para probar CORS específicamente
 app.get('/test-cors', (req, res) => {
+  const origin = req.get('origin');
+  
+  // Forzar headers CORS
+  if (origin) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+  }
+  
   res.status(200).json({ 
     status: 'CORS OK',
-    origin: req.get('origin'),
+    origin: origin,
     method: req.method,
     headers: {
       'access-control-allow-origin': res.get('access-control-allow-origin'),
       'access-control-allow-credentials': res.get('access-control-allow-credentials')
     },
-    timestamp: new Date().toISOString()
+    timestamp: new Date().toISOString(),
+    server: 'render'
   });
 });
 
-// ✅ MANEJO ESPECÍFICO DE OPTIONS PARA RUTAS PROBLEMÁTICAS
-app.options('/api/auth/*', (req, res) => {
-  console.log('🔍 Manual OPTIONS handler for auth:', req.url);
+// ✅ MANEJO ESPECÍFICO DE OPTIONS MEJORADO
+app.options('*', (req, res) => {
+  console.log('🔍 Global OPTIONS handler:', req.url);
   console.log('🔍 Origin:', req.get('origin'));
   
-  // Forzar headers CORS
   const origin = req.get('origin');
-  if (origin === 'https://subastas-mora.netlify.app' || 
-      origin?.includes('localhost') ||
-      origin?.includes('netlify.app')) {
-    res.header('Access-Control-Allow-Origin', origin);
+  const allowedOrigins = [
+    'https://subastas-mora.netlify.app',
+    'https://api-gateway-g9gb.onrender.com',
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://localhost:5173'
+  ];
+  
+  if (!origin || allowedOrigins.includes(origin) || 
+      origin.includes('netlify.app') || 
+      origin.includes('localhost')) {
+    res.header('Access-Control-Allow-Origin', origin || '*');
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin');
+    res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin,Access-Control-Request-Method,Access-Control-Request-Headers');
+    res.header('Access-Control-Max-Age', '86400');
   }
   
   res.status(200).end();
 });
 
-// ✅ RUTAS A MICROSERVICIOS (DESPUÉS de health checks)
+// ✅ RUTAS A MICROSERVICIOS
 app.use('/api/auth', authRoutes);
 app.use('/api', auctionRoutes);
 app.use('/api/bids', bidRoutes);
 
-// ✅ APLICAR WEBSOCKET PROXY DESPUÉS DE RUTAS
+// ✅ APLICAR WEBSOCKET PROXY
 app.use('/socket.io', wsProxy);
 server.on('upgrade', wsProxy.upgrade);
 
-// ✅ MANEJO DE ERRORES MEJORADO
+// ✅ MANEJO DE ERRORES CON CORS
 app.use((err, req, res, next) => {
   console.error('❌ Error en API Gateway:', {
     message: err.message,
@@ -123,16 +152,13 @@ app.use((err, req, res, next) => {
     userAgent: req.get('user-agent')?.substring(0, 50)
   });
 
-  // ✅ Asegurar headers CORS incluso en errores
+  // ✅ Asegurar headers CORS en errores
   const origin = req.get('origin');
-  if (origin === 'https://subastas-mora.netlify.app' || 
-      origin?.includes('localhost') ||
-      origin?.includes('netlify.app')) {
+  if (origin) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
   }
 
-  // No enviar stack trace en producción
   const isDev = process.env.NODE_ENV !== 'production';
   
   res.status(err.status || 500).json({
@@ -149,9 +175,7 @@ app.use('*', (req, res) => {
   
   // Asegurar headers CORS para 404s
   const origin = req.get('origin');
-  if (origin === 'https://subastas-mora.netlify.app' || 
-      origin?.includes('localhost') ||
-      origin?.includes('netlify.app')) {
+  if (origin) {
     res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
   }
@@ -170,9 +194,11 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`📡 WebSocket proxy configured for BID-SERVICE at ${WS_TARGET}`);
   console.log(`🌐 CORS enabled for: https://subastas-mora.netlify.app`);
   console.log(`🔧 Environment: ${process.env.NODE_ENV}`);
+  console.log(`🏠 Server: Render`);
+  console.log(`🔍 Allowed origins:`, process.env.ALLOWED_ORIGINS);
 });
 
-// ✅ MANEJO DE SEÑALES PARA RAILWAY
+// ✅ MANEJO DE SEÑALES PARA RENDER
 process.on('SIGTERM', () => {
   console.log('🛑 SIGTERM received, shutting down gracefully');
   server.close(() => {
