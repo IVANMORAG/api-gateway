@@ -10,13 +10,20 @@ services:
       - AUTH_SERVICE_URL=https://auth-service-production-efff.up.railway.app
       - AUCTION_SERVICE_URL=https://auction-service-production-0633.up.railway.app
       - BID_SERVICE_URL=https://bid-service-production.up.railway.app
-      # ✅ Agregar variables para CORS debugging
       - CORS_DEBUG=true
-    env_file:
-      - .env
-    # ✅ Agregar health check
+      - ALLOWED_ORIGINS=https://subastas-mora.netlify.app,http://localhost:3000,http://localhost:5173
+    # Remover env_file si no tienes .env
+    # env_file:
+    #   - .env
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 40s
+    # Agregar logging para debug
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
