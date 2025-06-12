@@ -1,7 +1,7 @@
 FROM node:18-alpine
 
-# Instalar dumb-init para manejo correcto de señales
-RUN apk add --no-cache dumb-init
+# Instalar dumb-init y curl para health checks
+RUN apk add --no-cache dumb-init curl
 
 # Crear directorio de trabajo
 WORKDIR /app
@@ -25,9 +25,12 @@ USER nodejs
 # Exponer puerto
 EXPOSE 3000
 
+# Variables de entorno por defecto
+ENV NODE_ENV=production
+ENV PORT=3000
+
 # Usar dumb-init para manejo correcto de señales
 ENTRYPOINT ["dumb-init", "--"]
 
-# Comando de inicio
-CMD ["npm", "start"]
-
+# Comando de inicio con logging explícito
+CMD ["sh", "-c", "echo 'Starting API Gateway...' && npm start"]
