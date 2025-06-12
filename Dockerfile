@@ -22,15 +22,10 @@ COPY --chown=nodejs:nodejs . .
 # Cambiar a usuario no-root
 USER nodejs
 
-# Exponer puerto
-EXPOSE 3000
 
 # Variables de entorno por defecto
 ENV NODE_ENV=production
 ENV PORT=3000
 
-# Usar dumb-init para manejo correcto de señales
 ENTRYPOINT ["dumb-init", "--"]
-
-# Comando de inicio con logging explícito
-CMD ["sh", "-c", "echo 'Starting API Gateway...' && npm start"]
+CMD ["npm", "start"]
