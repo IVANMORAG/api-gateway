@@ -4,12 +4,25 @@ const { AUTH_SERVICE_URL } = require('../config/env');
 
 const router = express.Router();
 
-// Middleware CORS específico para auth
+// Middleware para loggear todas las solicitudes entrantes
+router.use((req, res, next) => {
+  console.log(`📥 Incoming request: ${req.method} ${req.path} from ${req.get('origin') || 'no-origin'}`, {
+    headers: {
+      contentType: req.headers['content-type'],
+      authorization: req.headers.authorization ? '***' : 'none',
+      origin: req.headers.origin,
+    },
+    body: req.body,
+  });
+  next();
+});
+
+// Middleware CORS
 router.use((req, res, next) => {
   const origin = req.get('origin');
   const allowedOrigins = [
     'https://subastas-mora.netlify.app',
-    'https://api-gateway.onrender.com',
+    'https://api-gateway-subastas.onrender.com',
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:5173',
@@ -68,11 +81,11 @@ router.use('/', httpProxy(AUTH_SERVICE_URL, {
           });
           return JSON.stringify(srcReq.body);
         } else {
-          console.warn('⚠️ No valid request body for AUTH service');
+          console.warn('⚠️ No valid request body for AUTH service:', srcReq.body);
           return bodyContent;
         }
       } catch (error) {
-        console.warn('⚠️ Error processing request body for AUTH service:', error.message);
+        console.error('❌ Error processing request body for AUTH service:', error.message);
         return bodyContent;
       }
     }
@@ -80,10 +93,11 @@ router.use('/', httpProxy(AUTH_SERVICE_URL, {
   },
 
   userResDecorator: (proxyRes, proxyResData, userReq, userRes) => {
+    const startTime = Date.now();
     const origin = userReq.get('origin');
     const allowedOrigins = [
       'https://subastas-mora.netlify.app',
-      'https://api-gateway.onrender.com',
+      'https://api-gateway-subastas.onrender.com',
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:5173',
@@ -103,10 +117,11 @@ router.use('/', httpProxy(AUTH_SERVICE_URL, {
         hasToken: !!(data.token || data.accessToken),
         hasUser: !!data.user,
         hasError: !!data.error,
+        responseTime: `${Date.now() - startTime}ms`,
       });
       return JSON.stringify(data);
     } catch (error) {
-      console.warn('⚠️ Could not parse response from AUTH service:', error.message);
+      console.error('❌ Could not parse response from AUTH service:', error.message);
       return proxyResData;
     }
   },
@@ -116,6 +131,7 @@ router.use('/', httpProxy(AUTH_SERVICE_URL, {
       message: err.message,
       code: err.code,
       stack: err.stack?.split('\n')[0],
+      timestamp: new Date().toISOString(),
     });
 
     if (res && !res.headersSent) {
@@ -127,31 +143,37 @@ router.use('/', httpProxy(AUTH_SERVICE_URL, {
           error: 'Servicio de autenticación no disponible',
           message: 'El servicio de autenticación está temporalmente fuera de línea',
           code: 'SERVICE_UNAVAILABLE',
+          timestamp: new Date().toISOString(),
         });
       } else if (err.code === 'ETIMEDOUT') {
         res.status(504).json({
           error: 'Timeout del servicio de autenticación',
           message: 'El servicio de autenticación tardó demasiado en responder',
           code: 'GATEWAY_TIMEOUT',
+          timestamp: new Date().toISOString(),
         });
       } else {
         res.status(500).json({
           error: 'Error en el gateway de autenticación',
           message: 'Error interno del gateway',
           code: 'INTERNAL_ERROR',
+          timestamp: new Date().toISOString(),
         });
       }
+    } else {
+      console.warn('⚠️ Headers already sent, cannot send error response');
     }
   },
 
   changeOrigin: true,
-  timeout: 60000,
-  proxyTimeout: 60000,
+  timeout: 15000, // 15 segundos
+  proxyTimeout: 15000, // 15 segundos
   preserveHeaderKeyCase: true,
   parseReqBody: true,
   limit: '10mb',
 
   filter: (req, res) => {
+    console.log(`🔎 Proxy filter: ${req.method} ${req.path}`);
     return req.method !== 'OPTIONS';
   },
 }));
@@ -164,6 +186,7 @@ router.get('/health', async (req, res) => {
       timeout: 5000,
     });
 
+    console.log('✅ AUTH health check success:', response.data);
     res.status(200).json({
       status: 'OK',
       service: 'auth-service-proxy',
@@ -171,7 +194,11 @@ router.get('/health', async (req, res) => {
       timestamp: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('❌ AUTH service health check failed:', error.message);
+    console.error('❌ AUTH service health check failed:', {
+      message: error.message,
+      code: error.code,
+      timestamp: new Date().toISOString(),
+    });
     res.status(503).json({
       status: 'ERROR',
       service: 'auth-service-proxy',
