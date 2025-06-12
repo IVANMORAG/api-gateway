@@ -5,7 +5,7 @@ services:
     runtime: docker
     dockerfile: Dockerfile
     env: node
-    plan: free  # Puedes cambiar a starter o professional si necesitas más recursos
+    plan: free # Puedes cambiar a starter o professional si necesitas más recursos
     
     # Configuración de red
     port: 3000
@@ -25,20 +25,24 @@ services:
         value: https://bid-service-production.up.railway.app
       - key: CORS_DEBUG
         value: "true"
+      # ✅ CORREGIDO: Incluir tu URL de Render
       - key: ALLOWED_ORIGINS
-        value: "https://subastas-mora.netlify.app,http://localhost:3000,https://api-gateway-g9gb.onrender.com"
-    
+        value: "https://subastas-mora.netlify.app,http://localhost:3000,http://localhost:5173,https://api-gateway-g9gb.onrender.com"
+      # ✅ NUEVO: Variable para el dominio de Render
+      - key: RENDER_EXTERNAL_URL
+        value: "https://api-gateway-g9gb.onrender.com"
+        
     # Configuración avanzada
-    autoDeploy: true  # Se despliega automáticamente con cada push
-    region: ohio  # o la región más cercana a tus usuarios (us-central1, etc.)
+    autoDeploy: true # Se despliega automáticamente con cada push
+    region: ohio # o la región más cercana a tus usuarios
     
     # Escalado (opcional para producción)
     scaling:
       minInstances: 1
       maxInstances: 1
-      cpu: 0.25  # Para plan free
-      memory: 512MB  # Para plan free
-
+      cpu: 0.25 # Para plan free
+      memory: 512MB # Para plan free
+      
     # Health check avanzado
     healthChecks:
       - name: app-health
@@ -47,3 +51,14 @@ services:
         interval: 60s
         timeout: 10s
         threshold: 3
+        
+    # ✅ NUEVO: Variables adicionales para mejor debugging
+    buildCommand: npm ci --only=production
+    startCommand: npm start
+    
+    # ✅ NUEVO: Headers personalizados si es necesario
+    headers:
+      - name: X-Frame-Options
+        value: DENY
+      - name: X-Content-Type-Options
+        value: nosniff
