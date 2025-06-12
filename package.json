@@ -1,15 +1,21 @@
 {
   "name": "api-gateway",
   "version": "1.0.0",
+  "description": "API Gateway para sistema de subastas",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
-    "dev": "nodemon src/index.js"
+    "dev": "nodemon src/index.js",
+    "test": "echo \"Starting server...\" && node src/index.js",
+    "docker:build": "docker build -t api-gateway .",
+    "docker:run": "docker run -p 3000:3000 api-gateway",
+    "docker:compose": "docker-compose up --build"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.5.0",
     "express": "^4.18.2",
+    "express-http-proxy": "^1.6.3",
     "express-rate-limit": "^6.7.0",
     "http-proxy-middleware": "^3.0.5",
     "morgan": "^1.10.0"
@@ -18,6 +24,15 @@
     "nodemon": "^2.0.20"
   },
   "engines": {
-    "node": ">=18.0.0"
-  }
+    "node": ">=18.0.0",
+    "npm": ">=8.0.0"
+  },
+  "keywords": [
+    "api-gateway",
+    "microservices",
+    "express",
+    "docker"
+  ],
+  "author": "Tu nombre",
+  "license": "MIT"
 }
