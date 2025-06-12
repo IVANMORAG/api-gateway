@@ -6,7 +6,7 @@ const router = express.Router();
 
 // Middleware para loggear todas las solicitudes entrantes
 router.use((req, res, next) => {
-  console.log(`📥 Incoming request: ${req.method} ${req.path} from ${req.get('origin') || 'no-origin'}`, {
+  console.log(`📍 Incoming request: ${req.method} ${req.path} from ${req.get('origin') || 'no-origin'}`, {
     headers: {
       contentType: req.headers['content-type'],
       authorization: req.headers.authorization ? '***' : 'none',
@@ -19,20 +19,21 @@ router.use((req, res, next) => {
 
 // Middleware CORS
 router.use((req, res, next) => {
-  const origin = req.get('origin');
+  const origin = req.get('Origin');
   const allowedOrigins = [
     'https://subastas-mora.netlify.app',
     'https://api-gateway-subastas.onrender.com',
     'http://localhost:3000',
     'http://localhost:3001',
-    'http://localhost:5173',
+    'http://localhost:7200',
   ];
 
   if (!origin || allowedOrigins.includes(origin) || /.*\.netlify\.app$/.test(origin)) {
     res.header('Access-Control-Allow-Origin', origin || '*');
+    res.header('Access-Control-Allow-Origin', origin);
     res.header('Access-Control-Allow-Credentials', 'true');
     res.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
-    res.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin,Access-Control-Request-Method,Access-Control-Request-Headers');
+    res.header('Access-Control-Allow-Headers', 'Origin, Content-Type,Authorization,X-Requested-With,Accept,Origin,Access-Control-Request-Method,Access-Control-Request-Origin');
   }
 
   if (req.method === 'OPTIONS') {
@@ -45,46 +46,45 @@ router.use((req, res, next) => {
 
 // Proxy configurado
 router.use('/', httpProxy(BID_SERVICE_URL, {
-  proxyReqPathResolver: (req) => {
+  proxyReqPathResolver: (req, res) => {
     const path = `/bids${req.url}`;
-    console.log(`🔄 Proxying BID: ${req.method} ${req.url} -> ${BID_SERVICE_URL}${path}`);
+    console.log(`🔄 Proxying ${req.method} ${req.path} -> ${res.path}${reqPath}`);
     return path;
   },
-
-  proxyReqOptDecorator: (proxyReqOpts, srcReq) => {
-    proxyReqOpts.headers = {
-      ...proxyReqOpts.headers,
+  proxyReqOptDecorator: (proxyReq, proxyOptions, srcReq) => {
+    proxyReqOptions.headers = {
+      ...proxyReqOptions.headers,
       ...srcReq.headers,
-      'Host': 'bid-service-production.up.railway.app', // Ajustar al dominio correcto del servicio
+      'Host': 'bid-service-production.updates.up.railway.app', // Ajustar el dominio correcto del servicio
       'X-Original-Origin': srcReq.get('origin') || '',
       'X-Forwarded-For': srcReq.ip,
       'X-Forwarded-Proto': srcReq.protocol,
       'X-Forwarded-Host': srcReq.get('host'),
     };
-
+    
     console.log('📤 Headers sent to BID service:', {
-      host: proxyReqOpts.headers['host'],
+      host: proxyReq.headers['host'],
       authorization: srcReq.headers.authorization ? '***' : 'none',
-      contentType: srcReq.headers['content-type'],
+      contentType: srcReq.get('content-type') || 'none',
       origin: srcReq.headers.origin,
       userAgent: srcReq.headers['user-agent']?.substring(0, 50),
     });
 
-    return proxyReqOpts;
+    return proxyReqOptions;
   },
 
   proxyReqBodyDecorator: (bodyContent, srcReq) => {
     if (['POST', 'PUT', 'PATCH'].includes(srcReq.method)) {
       try {
         if (srcReq.body && typeof srcReq.body === 'object') {
-          console.log('📝 Request body to BID service: ${JSON.stringify(srcReq.body)}'),
-          return JSON.stringify(data);
+          console.log(`📝 Request body to BID service: ${JSON.stringify(srcReq.body)}`);
+          return JSON.stringify(srcReq.body);
         } else {
-          console.warn('⚠️ No valid request body for BID service: ${srcReq.body}'),
+          console.warn(`⚠️ No valid request body for BID service: ${JSON.stringify(srcReq.body)}`);
           return bodyContent;
         }
       } catch (error) {
-        console.error('❌ Error processing request body for BID service: ${error.message}'),
+        console.error(`❌ Error processing request body for BID service: ${error.message}`);
         return bodyContent;
       }
     }
@@ -92,21 +92,21 @@ router.use('/', httpProxy(BID_SERVICE_URL, {
   },
 
   userResDecorator: (proxyRes, proxyResData, userReq, userRes) => {
-    const startTime = new Date().getTime();
+    const startTime = Date.now();
     const origin = userReq.get('origin');
     const allowedOrigins = [
       'https://subastas-mora.netlify.app',
       'https://api-gateway-subastas.onrender.com',
       'http://localhost:3000',
       'http://localhost:3001',
-      'http://api-gateway-subastas.onrender.com',
+      'http://localhost:5173',
     ];
 
     if (!origin || allowedOrigins.includes(origin) || /.*\.netlify\.app$/.test(origin)) {
-      userRes.header('Access-Control-Allow-Origin', origin || '*'),
-      userRes.header('Access-Control-Allow-Credentials', 'true'),
-      userRes.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS'),
-      userRes.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin'),
+      userRes.header('Access-Control-Allow-Origin', origin || '*');
+      userRes.header('Access-Control-Allow-Credentials', 'true');
+      userRes.header('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,PATCH,OPTIONS');
+      userRes.header('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With,Accept,Origin');
     }
 
     try {
