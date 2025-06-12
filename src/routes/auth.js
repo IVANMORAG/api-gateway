@@ -55,6 +55,7 @@ router.use('/', httpProxy(AUTH_SERVICE_URL, {
     proxyReqOpts.headers = {
       ...proxyReqOpts.headers,
       ...srcReq.headers,
+      'Host': 'auth-service-production-efff.up.railway.app', // Forzar el Host correcto
       'X-Original-Origin': srcReq.get('origin') || '',
       'X-Forwarded-For': srcReq.ip,
       'X-Forwarded-Proto': srcReq.protocol,
@@ -62,6 +63,7 @@ router.use('/', httpProxy(AUTH_SERVICE_URL, {
     };
 
     console.log('📤 Headers sent to AUTH service:', {
+      host: proxyReqOpts.headers['host'],
       authorization: srcReq.headers.authorization ? '***' : 'none',
       contentType: srcReq.headers['content-type'],
       origin: srcReq.headers.origin,
@@ -150,6 +152,13 @@ router.use('/', httpProxy(AUTH_SERVICE_URL, {
           error: 'Timeout del servicio de autenticación',
           message: 'El servicio de autenticación tardó demasiado en responder',
           code: 'GATEWAY_TIMEOUT',
+          timestamp: new Date().toISOString(),
+        });
+      } else if (err.code === 'ERR_TLS_CERT_ALTNAME_INVALID') {
+        res.status(502).json({
+          error: 'Error de validación de certificado',
+          message: 'No se pudo validar el certificado del servicio de autenticación',
+          code: 'TLS_CERT_ERROR',
           timestamp: new Date().toISOString(),
         });
       } else {
